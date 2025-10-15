@@ -6,81 +6,77 @@
 //
 
 import SwiftUI
-import CoreData
+internal import CoreData
 
 struct ContentView: View {
     @Environment(\.managedObjectContext) private var viewContext
-
-    @FetchRequest(
-        sortDescriptors: [NSSortDescriptor(keyPath: \Item.timestamp, ascending: true)],
-        animation: .default)
-    private var items: FetchedResults<Item>
-
+    @FetchRequest(entity: Recipe.entity(),
+                  sortDescriptors: [NSSortDescriptor(keyPath: \Recipe.name, ascending: true)])
+    var recipes: FetchedResults<Recipe>
+    
+    @State private var previewRecipe: Recipe? = nil
+    @State private var showPreview = false
+    
     var body: some View {
         NavigationView {
             List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp!, formatter: itemFormatter)")
-                    } label: {
-                        Text(item.timestamp!, formatter: itemFormatter)
+                ForEach(recipes) { recipe in
+                    NavigationLink(destination: RecipeFormView(recipe: recipe)) {
+                        HStack {
+                            VStack(alignment: .leading) {
+                                Text(recipe.name ?? "Unnamed")
+                                    .font(.headline)
+                                HStack {
+                                    Text(recipe.category ?? "No Category")
+                                    Spacer()
+                                    Text("\(recipe.time) mins")
+                                }
+                                .font(.subheadline)
+                                .foregroundColor(.gray)
+                            }
+                            Spacer()
+                        }
+                        .contentShape(Rectangle()) // full row tappable
                     }
+                    .simultaneousGesture(
+                        LongPressGesture()
+                            .onEnded { _ in
+                                previewRecipe = recipe
+                                showPreview = true
+                            }
+                    )
                 }
-                .onDelete(perform: deleteItems)
+                .onDelete(perform: deleteRecipes)
             }
+            .navigationTitle("My Recipes")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
-                }
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
+                    NavigationLink(destination: RecipeFormView()) {
+                        Image(systemName: "plus")
                     }
                 }
             }
-            Text("Select an item")
-        }
-    }
-
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(context: viewContext)
-            newItem.timestamp = Date()
-
-            do {
-                try viewContext.save()
-            } catch {
-                // Replace this implementation with code to handle the error appropriately.
-                // fatalError() causes the application to generate a crash log and terminate. You should not use this function in a shipping application, although it may be useful during development.
-                let nsError = error as NSError
-                fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
+            .sheet(isPresented: $showPreview) {
+                if let recipe = previewRecipe {
+                    NavigationView {
+                        RecipeDetailView(recipe: recipe)
+                            .toolbar {
+                                ToolbarItem(placement: .navigationBarLeading) {
+                                    Button("Close") {
+                                        showPreview = false
+                                    }
+                                }
+                            }
+                    }
+                }
             }
         }
     }
 
-    private func deleteItems(offsets: IndexSet) {
+    private func deleteRecipes(offsets: IndexSet) {
         withAnimation {
-            offsets.map { items[$0] }.forEach(viewContext.delete)
-
-            do {
-                try viewContext.save()
-            } catch {
-                // Replace this implementation with code to handle the error appropriately.
-                // fatalError() causes the application to generate a crash log and terminate. You should not use this function in a shipping application, although it may be useful during development.
-                let nsError = error as NSError
-                fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
-            }
+            offsets.map { recipes[$0] }.forEach(viewContext.delete)
+            try? viewContext.save()
         }
     }
-}
-
-private let itemFormatter: DateFormatter = {
-    let formatter = DateFormatter()
-    formatter.dateStyle = .short
-    formatter.timeStyle = .medium
-    return formatter
-}()
-
-#Preview {
-    ContentView().environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
 }
